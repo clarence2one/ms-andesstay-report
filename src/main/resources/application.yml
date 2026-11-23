@@ -1,0 +1,84 @@
+spring:
+  application:
+    name: ms-andesstay-report
+  datasource:
+    url: ${DB_URL:jdbc:oracle:thin:@localhost:1521/FREEPDB1}
+    username: ${DB_USERNAME:andesstay}
+    password: ${DB_PASSWORD:changeit}
+    driver-class-name: oracle.jdbc.OracleDriver
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: ${JPA_SHOW_SQL:false}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AZURE_ISSUER_URI:https://login.microsoftonline.com/fbf645d5-8f6d-45fc-9e8d-c8866d008af1/v2.0}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ms-andesstay-report
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        # Jackson 3 nativo (Boot 4): ver JacksonJsonDeserializer/Serializer mas abajo.
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+        spring.json.trusted.packages: com.andesstay.ms_andesstay_report.messaging
+        spring.json.value.default.type: com.andesstay.ms_andesstay_report.messaging.ReservationEvent
+        spring.json.use.type.headers: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+        acks: all
+        enable.idempotence: true
+        retries: 3
+        compression.type: snappy
+        batch.size: 32768
+        linger.ms: 20
+    listener:
+      ack-mode: record
+      concurrency: 3
+
+server:
+  port: ${SERVER_PORT:8085}
+
+andesstay:
+  security:
+    audience: ${AZURE_API_AUDIENCE:api://d6959b0c-9ec2-432e-bddb-54bd0e83ace9}
+    roles-claim: roles
+  kafka:
+    topic-reservations-events: reservations.events
+    topic-audit-timeline: audit.timeline
+    partitions: 3
+    # 3 réplicas en el cluster de 3 brokers; en local con 1 broker se baja a 1 con esta variable.
+    replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:1}
+    cleanup-policy: delete
+    min-insync-replicas: 2
+    reservations-retention-ms: 604800000      # 7 días para el flujo de eventos
+    reservations-retention-bytes: 1073741824  # 1 GB por partición
+    dlt-retention-ms: 1209600000              # 14 días para debugging de errores
+    dlt-retention-bytes: 268435456            # 256 MB por partición
+    audit-retention-ms: 2592000000            # 30 días para la auditoría
+    audit-retention-bytes: 2147483648         # 2 GB por partición
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    com.andesstay: INFO
